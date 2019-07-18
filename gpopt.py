@@ -8,14 +8,21 @@ import logging
 logger = logging.getLogger(__name__)
 
 class Kernel:        
+    """ GP kernel base class """
     def evaluate(self, ptsA, ptsB=None):
+        """ Evaluate kernel at the given points
+        
+            Arguments:
+                ptsA: array of n vectors
+                ptsB: array of m vectors (default: ptsA)
+                
+            Returns:
+                n x m kernel matrix
+            """
         raise NotImplementedError()
         
     def evaluate_diag(self, ptsA):
         return np.diag(self.evaluate(ptsA))
-    
-    def fit_to_gp(self, gp, **kwargs):
-        print("Warning: Unable to fit parameters of '{}' to GP".format(self.__class__.__name__))
     
 class NonisotropicGaussianKernel(Kernel):
     def __init__(self, sigma_y, h):
@@ -266,13 +273,14 @@ class AcquisitionFunction:
         return res["x"], res["fun"]
     
 class LogExpectedImprovement(AcquisitionFunction):
-    def __init__(self, jitter=0.01, with_obs_noise=False, seed=None):
+    def __init__(self, jitter=0.01, seed=None):
         super().__init__(seed=seed)
         
         self.jitter = jitter
-        self.with_obs_noise = with_obs_noise
     
-    def evaluate(self, points, gp, grad=False):        
+    def evaluate(self, points, gp):        
+        """ This long-winded function just computes the log EI in
+            a numerically stable way """
         points = np.asarray(points)
         
         if len(gp.obs_x) == 0:
@@ -281,7 +289,7 @@ class LogExpectedImprovement(AcquisitionFunction):
         obs_min = np.min(gp.obs_y)
         
         points_f = points.reshape((-1, gp.d))
-        means, SS = gp.evaluate(points_f, with_obs_noise=self.with_obs_noise)
+        means, SS = gp.evaluate(points_f)
         
         SS[SS < 1e-6] = 1e-6
         
@@ -310,9 +318,6 @@ class LogExpectedImprovement(AcquisitionFunction):
         ret[idcs_p[idcs_pb]] = t2[idcs_p][idcs_pb] + np.log(1 + np.exp(t1_p[idcs_pb] - t2[idcs_p][idcs_pb]))
         
         ret = ret.reshape(points.shape[:-1])
-        
-        if grad:
-            raise NotImplementedError()
             
         return -np.sign(ret) * np.log(1 + np.abs(ret))
     
@@ -320,19 +325,34 @@ class LogExpectedImprovement(AcquisitionFunction):
         return "ExpectedImprovement(jitter={}, seed={})".format(self.jitter, self.seed)
     
 class Model:
+    """ Model base class """
     def run_single(*args, **kwargs):
         return NotImplementedError()
 
 class Trainer:
-    def __init__(self, gp, model, af, ranges, init_obs = 20, n_iter = 5, model_args = (), model_kwargs = {}, out=None, pretrain=True, seed=None):
+    def __init__(self, gp, model, af, ranges, init_obs = 20, n_iter = 5, model_kwargs = {}, out=None, seed=None):
+        """ Selected arguments:
+                ranges: d x 2 array of floats
+                    Search range in the form [min,max] for every dimension
+                    
+                init_obs: int
+                    Number of initial points for pre-training the GP
+                    
+                n_iter: int
+                    Number of restarts during AF optimization (to prevent local optima)
+                    
+                out: string
+                    Filename to save results in
+        """
         self.gp = gp
         
         self.model = model
-        self.model_args = model_args
         self.model_kwargs = model_kwargs
         
         self.af = af
         self.ranges = np.asarray(ranges)
+        
+        assert len(self.ranges) == self.gp.d
         
         self.x_opt = None
         
@@ -343,12 +363,8 @@ class Trainer:
         
         self.out = out
         
-        assert len(self.ranges) == self.gp.d
-        
-        if pretrain:
-            self.pretrain_gp()
-        
     def draw_random_points(self, n):
+        """ Sample n points in search region using Latin hypercubes """
         idcs = np.asarray([ self.rng.permutation(n) for i in range(self.gp.d) ])
         idcs = idcs.T
         
@@ -362,26 +378,27 @@ class Trainer:
         return pts
         
     def pretrain_gp(self):
+        """ Pre-train GP by evaluating model at a specified number of 
+            points covering the search region """
         if self.init_obs == 0:
             return
         
         pretrain_pts = self.draw_random_points(self.init_obs)
+        self.train_at(pretrain_pts)
         
-        for pt in pretrain_pts:
-            y, data = self.model.run_single(pt, *self.model_args, **self.model_kwargs)
-            self.gp.add_obs([pt], [np.asscalar(y)], data=[data])
+    def comp_next_point(self, n_iter=None):
+        """ Compute next point to evaluate the model by optimizing the
+            acquisition function 
             
-            if self.out is not None:
-                with open(self.out, "wb") as of:
-                    dill.dump(self, of)
-        
-    def comp_next_point(self, n_iter=None, af=None):
-        if af is None:
-            af = self.af
-            
+            Arguments:
+                n_iter: int
+                    Number of restarts for the optimization procedure
+            """
         if n_iter is None:
             n_iter = self.n_iter
             
+        # Start in the center of the search region if there are 
+        # no observations at all
         if len(self.gp.obs_x) == 0:
             self.x_opt = np.mean(self.ranges, axis=-1)
                 
@@ -392,7 +409,7 @@ class Trainer:
         
         x0s = self.draw_random_points(n_iter)
         for x0 in x0s:
-            x, y = af.optimize(self.gp, x0, bounds=self.ranges)
+            x, y = self.af.optimize(self.gp, x0, bounds=self.ranges)
             
             if y < y_min:
                 x_min = x
@@ -401,24 +418,19 @@ class Trainer:
         self.x_opt = x_min
         return self.x_opt
     
-    def find_optimum(self, **kwargs):
-        af = PredictedMean(seed=self.rng.randint(2 ** 31))
-        return self.comp_next_point(af=af, **kwargs)
-        
-    def train(self, n_max):
-        for i in range(n_max):
+    def train(self, n_rounds):
+        """ Run Bayesian optimization for given number of rounds """
+        for i in range(n_rounds):
             x_opt = self.comp_next_point()
+            self.train_at([x_opt])
                 
-            y, data = self.model.run_single(x_opt, *self.model_args, **self.model_kwargs)
+    def train_at(self, points):
+        """ Utility function: train GP at selected points by running the simulator """
+        for point in points:
+            y, data = self.model.run_single(point, **self.model_kwargs)
             
-            self.gp.add_obs([x_opt], [np.asscalar(y)], data=[data])
-            
+            self.gp.add_obs([point], [np.asscalar(y)], data=[data])
+
             if self.out is not None:
                 with open(self.out, "wb") as of:
                     dill.dump(self, of)
-                
-    def train_at(self, points):
-        for point in points:
-            y, data = self.model.run_single(point, *self.model_args, **self.model_kwargs)
-            
-            self.gp.add_obs([point], [np.asscalar(y)], data=[data])

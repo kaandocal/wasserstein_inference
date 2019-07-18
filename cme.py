@@ -5,10 +5,7 @@ from tqdm import tqdm
 import logging
 logger = logging.getLogger(__name__)
 
-try:
-    import pdist
-except ModuleNotFoundError:
-    logger.warning("Could not load module pdist")
+import pdist
     
 dtype = np.double
 
@@ -20,15 +17,13 @@ class Reaction:
         - rate: float
             Base rate of the reaction
 
-        - dist: float (default: 0)
-            Distance from epicenter at which products appear
-
         - products: array or None (default: None)
             List of products created during the reaction. Entries must be of the following forms:
             * spec: int 
                 Denotes one reactant of the given species 
             * (b: float, spec: int)
                 Denotes a burst of the given species following the geometric distribution with mean b
+                (by convention the geometric distribution starts at 0).
 
     """
 
@@ -65,8 +60,7 @@ class UniReaction(Reaction):
         
 class BiReaction(Reaction):
     """
-        The BiReaction class represents bimolecular reactions. Note that for reactions 
-        of two particles of the same species every combination of two particles is only counted once.
+        The BiReaction class represents bimolecular reactions.
 
         Parameters:
         - specA, specB: int
@@ -82,7 +76,7 @@ class BiReaction(Reaction):
         return "BiReaction(rate={}, specA={}, specB={}, dist={}, products={})".format(self.rate, self.specA, self.specB, self.dist, self.products)
     
 class ReactionSystem:
-    """ This class stores information about the model in a CME reaction system.
+    """ This class stores information about a reaction system.
     
         Arguments:
             n_species: int
@@ -94,10 +88,6 @@ class ReactionSystem:
             
             initial_state: array of ints
                 Initial number of particles per species. 
-                
-        Attributes:
-            block_size: int (default: 100)
-                Size of block in particle buffer (internal)
     """
     def __init__(self, n_species, reactions = (), initial_state = None):
         self.n_species = n_species
@@ -166,9 +156,6 @@ class ParticleSystem:
         self.t = 0
         self.events = []
         
-        # Used for fast updating of particle count trajectories 
-        self.events_iter = None
-        
         self.add_initial_molecules()
         
     ### INTERNALS ###
@@ -197,9 +184,11 @@ class ParticleSystem:
             if type(prod) == int:
                 ret.append(prod)
             else:
-                m, spec = prod
+                b, spec = prod
                 
-                p = 1 / m
+                p = 1 / b
+                
+                # Numpy's geometric distribution starts at 1
                 n = self.rng.geometric(p) - 1
                 ret += [ spec for i in range(n) ]
                 
@@ -220,7 +209,7 @@ class ParticleSystem:
         rates = np.empty(len(self.system.reactions_bi),)
         
         for i, reac in enumerate(self.system.reactions_bi):
-            # Do not possible overcount reactant pairs if both educts are of the same species
+            # Do not overcount reactant pairs if both educts are of the same species
             if reac.specA == reac.specB:
                 combs = 0.5 * self.counts[reac.specA] * (self.counts[reac.specA] - 1)
             else:
@@ -268,7 +257,7 @@ class ParticleSystem:
         
         with tqdm(total=tmax, 
                   desc="Time simulated: ", 
-                  unit="tu", 
+                  unit="s", 
                   disable=disable_pbar) as pbar:
             while True:
                 uni_rates = self.uni_rates * self.counts[self.uni_spec]
@@ -337,10 +326,6 @@ class ParticleSystem:
             pbar.update(dt - (self.t - t0 - tmax))
             self.t = t0 + tmax
     
-    ### UTILITY FUNCTIONS ###
-    def update_count_species(self, **kwargs):
-        return self.count_species(**kwargs)
-    
     def get_dist(self, t_max=None):
         """ 
             Return the distribution of particle numbers over the lifetime of the system
@@ -356,7 +341,7 @@ class ParticleSystem:
         i = 0
         
         for t, e in self.events:
-            if e[0] == "jump" or t > t_max:
+            if t > t_max:
                 continue
 
             weights[i] = t - t_last

@@ -27,7 +27,7 @@ def logmatvec_sepkernel(v, log_Ks):
 
     return v
 
-# Code for overrelaxed Sinkhorn algorithm
+### Code for overrelaxed Sinkhorn algorithm
 def phi(log_x, omega):
     return np.exp(log_x) * (1 - np.exp(-omega * log_x)) - omega * log_x
 
@@ -46,6 +46,8 @@ def Theta_star(log_u):
 def Theta(log_u, delta=0.01, theta0=1.5):
     min_log_u = np.min(log_u)
     return min(theta0, max(1, Theta_star(min_log_u) - delta))    
+
+###
 
 class ParticleDistribution:
     """ Particle distribution (histogram) class
@@ -105,8 +107,10 @@ class ParticleDistribution:
     
     def data_from_hist(self, hist):
         return np.asarray(hist) / np.sum(hist)
-        
+    
     def coarsen(self, dim, scale=2):        
+        """ Reduce histogram dimensions by binning counts in the specified dimension
+            by the given scale factor """
         data_reord = np.moveaxis(self.data, dim, 0)
         
         new_shape = [ si for si in data_reord.shape ]
@@ -125,41 +129,15 @@ class ParticleDistribution:
         return ParticleDistribution(hist_new, hist=True)
         
     def marginal(self, spec):
+        """ Construct a lower-dimensional histogram by marginalizing over
+            all dimensions not specified in the argument """
         if np.isscalar(spec):
-            spec = [spec]
+            spec = [spec]s
             
         sum_axes = tuple([ i for i in range(self.n_species) if i not in spec ])
         hist_new = np.sum(self.data, axis=sum_axes)
         
         return ParticleDistribution(hist_new, hist=True)
-    
-    def update(self, other, weight):
-        assert self.n_species == other.n_species
-        
-        bounds = np.max((self.bounds, other.bounds), axis=0)
-        hist_new = np.zeros(bounds + 1)
-        
-        sl_self = tuple([ slice(0, self.data.shape[i]) for i in range(self.data.ndim) ])
-        sl_other = tuple([ slice(0, other.data.shape[i]) for i in range(other.data.ndim) ])
-        
-        hist_new[sl_self] += weight * self.data
-        hist_new[sl_other] += (1 - weight) * other.data
-        
-        return ParticleDistribution(hist_new, hist=True)
-        
-    def dist_TV(self, other, weights=None):
-        assert self.n_species == other.n_species
-        
-        bounds = np.max((self.bounds, other.bounds), axis=0)
-        hist = np.zeros(bounds + 1)
-        
-        sl_self = tuple([ slice(0, self.data.shape[i]) for i in range(self.data.ndim) ])
-        sl_other = tuple([ slice(0, other.data.shape[i]) for i in range(other.data.ndim) ])
-        
-        hist[sl_self] += self.data
-        hist[sl_other] -= other.data
-        
-        return 0.5 * np.sum(np.abs(hist))
         
     def noncentral_moment(self, exponents):
         assert len(exponents) == self.n_species
@@ -211,7 +189,7 @@ class ParticleDistribution:
         else:
             return self.wasserstein_dist_sinkhorn_wrapper(other, p=p, weights=weights, **kwargs)
     
-    def wasserstein_dist_sinkhorn_wrapper(self, other, weights=None, p=1, **kwargs):
+    def wasserstein_dist_sinkhorn_wrapper(self, other, weights=None, p=1, **kwargs):s
         if self.n_species == 1:
             return self.wasserstein_dist_1D(other, p=p, weights=weights, **kwargs)
         
@@ -221,7 +199,7 @@ class ParticleDistribution:
         try:
             max_dim = np.max(np.maximum(self.bounds, other.bounds))
             if max_dim > 1000:
-                raise MemoryError
+                raise MemoryError            # Precaution
                 
             ret = self.wasserstein_dist_sinkhorn(other, p=p, weights=weights, **kwargs)
         except MemoryError:

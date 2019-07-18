@@ -1,6 +1,7 @@
 """ utils.py
 
     This module sets up a logfile using the current time
+    as the file name.
 """
 
 import logging
@@ -20,7 +21,7 @@ ch.setLevel(logging.WARNING)
 
 # create formatter and add it to the handlers
 formatstr = '%(asctime)s: %(name)s: %(levelname)s: %(message)s'
-formatter = logging.Formatter(formatstr, datefmt='%m\%d %H:%M:%S')
+formatter = logging.Formatter(formatstr, datefmt='%d/%m %H:%M:%S')
 fh.setFormatter(formatter)
 ch.setFormatter(formatter)
 

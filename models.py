@@ -1,5 +1,4 @@
 import numpy as np
-import cme
 import pdist
 
 import time
@@ -7,6 +6,15 @@ from copy import copy
 
 import logging
 logger = logging.getLogger(__name__)
+
+import cme
+
+try:
+    import cme_julia
+    use_julia = True
+except:
+    logger.info("Warning: Cannot load module cme_julia, reverting to cme by default")
+    use_julia = False
 
 class SummaryStatistic:
     def compute(self):
@@ -128,7 +136,7 @@ class SimModel:
             dist_old = dist
             
             if rel_es and self.obs is not None:
-                conv_cond = (np.abs(disc) < tol * (ss - self.obs)) | (np.abs(disc) < tol)
+                conv_cond = (np.abs(disc) < tol * np.abs(ss - self.obs)) | (np.abs(disc) < tol)
             else:
                 conv_cond = np.abs(disc) < tol
                 
@@ -235,9 +243,14 @@ class CMEModel(SimModel):
     def create_system(self, params):
         reactions = self.create_rates(params)
         
-        system = cme.ReactionSystem(n_species=self.n_species, 
-                                    reactions = reactions,
-                                    initial_state = self.initial_state)
+        if use_julia:
+            system = cme_julia.ReactionSystem(n_species=self.n_species, 
+                                              reactions = reactions,
+                                              initial_state = self.initial_state)
+        else:
+            system = cme.ReactionSystem(n_species=self.n_species, 
+                                        reactions = reactions,
+                                        initial_state = self.initial_state)
 
         return system
     

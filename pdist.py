@@ -132,7 +132,7 @@ class ParticleDistribution:
         """ Construct a lower-dimensional histogram by marginalizing over
             all dimensions not specified in the argument """
         if np.isscalar(spec):
-            spec = [spec]s
+            spec = [spec]
             
         sum_axes = tuple([ i for i in range(self.n_species) if i not in spec ])
         hist_new = np.sum(self.data, axis=sum_axes)
@@ -189,7 +189,7 @@ class ParticleDistribution:
         else:
             return self.wasserstein_dist_sinkhorn_wrapper(other, p=p, weights=weights, **kwargs)
     
-    def wasserstein_dist_sinkhorn_wrapper(self, other, weights=None, p=1, **kwargs):s
+    def wasserstein_dist_sinkhorn_wrapper(self, other, weights=None, p=1, **kwargs):
         if self.n_species == 1:
             return self.wasserstein_dist_1D(other, p=p, weights=weights, **kwargs)
         

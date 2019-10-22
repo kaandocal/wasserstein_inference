@@ -27,9 +27,8 @@ class Reaction:
 
     """
 
-    def __init__(self, rate, dist = 0, products = None):
+    def __init__(self, rate, products = None):
         self.rate = rate
-        self.dist = dist
         self.products = products
 
 class GenReaction(Reaction):
@@ -37,11 +36,11 @@ class GenReaction(Reaction):
         The GenReaction class represents reactions without educts.
     """
 
-    def __init__(self, rate, dist = 0, products = None):
+    def __init__(self, rate, products = None):
         super().__init__(rate, dist, products)
         
     def __str__(self):
-        return "GenReaction(rate={}, dist={}, products={})".format(self.rate, self.dist, self.products)
+        return "GenReaction(rate={}, products={})".format(self.rate, self.products)
         
 class UniReaction(Reaction):
     """ The UniReaction class represents unimolecular reactions. 
@@ -51,12 +50,12 @@ class UniReaction(Reaction):
             The species undergoing the reaction
     """
 
-    def __init__(self, rate, spec, dist = 0, products = None):
-        super().__init__(rate, dist, products)
+    def __init__(self, rate, spec, products = None):
+        super().__init__(rate, products)
         self.spec = spec
         
     def __str__(self):
-        return "UniReaction(rate={}, spec={}, dist={}, products={})".format(self.rate, self.spec, self.dist, self.products)
+        return "UniReaction(rate={}, spec={}, products={})".format(self.rate, self.spec, self.products)
         
 class BiReaction(Reaction):
     """
@@ -67,13 +66,13 @@ class BiReaction(Reaction):
             The species of the two particles undergoing the reaction
     """
 
-    def __init__(self, rate, specA, specB, dist = 0, products = None):
-        super().__init__(rate, dist, products)
+    def __init__(self, rate, specA, specB, products = None):
+        super().__init__(rate, products)
         self.specA = specA
         self.specB = specB
         
     def __str__(self):
-        return "BiReaction(rate={}, specA={}, specB={}, dist={}, products={})".format(self.rate, self.specA, self.specB, self.dist, self.products)
+        return "BiReaction(rate={}, specA={}, specB={}, products={})".format(self.rate, self.specA, self.specB, self.products)
     
 class ReactionSystem:
     """ This class stores information about a reaction system.

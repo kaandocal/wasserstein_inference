@@ -362,6 +362,8 @@ class Trainer:
         self.n_iter = n_iter
         
         self.out = out
+
+        self.pretrain_gp()
         
     def draw_random_points(self, n):
         """ Sample n points in search region using Latin hypercubes """
